@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { FileItem, FileType } from '../types';
 import { FileText, FileImage, File, Folder, MoreVertical, Download, Trash2, Sparkles, Share2 } from 'lucide-react';
 import { summarizeText } from '../services/geminiService';
+import { tokenService } from '../services/tokenService';
 
 interface FileCardProps {
   file: FileItem;
@@ -78,7 +79,7 @@ const FileCard: React.FC<FileCardProps> = ({ file, onDelete, onShare, onPreview 
     const response = await fetch(`${import.meta.env.VITE_API_URL}/api/files/download/${file.id}`, {
       method: 'GET',
       headers: {
-        'x-auth-token': localStorage.getItem('token') || '',
+        'x-auth-token': tokenService.getToken() || '',
       },
     });
 
