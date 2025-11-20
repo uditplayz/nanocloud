@@ -70,6 +70,38 @@ const FileCard: React.FC<FileCardProps> = ({ file, onDelete, onShare, onPreview 
     setMenuOpen(!isMenuOpen);
   };
 
+  const handleDownload = async (e: React.MouseEvent) => {
+  e.stopPropagation();
+  setMenuOpen(false);
+  
+  try {
+    const response = await fetch(`${import.meta.env.VITE_API_URL}/api/files/download/${file.id}`, {
+      method: 'GET',
+      headers: {
+        'x-auth-token': localStorage.getItem('token') || '',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to get download URL');
+    }
+
+    const { downloadUrl } = await response.json();
+    
+    // Trigger download
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = file.name;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } catch (error) {
+    console.error('Download failed:', error);
+    alert('Download failed. Please try again.');
+  }
+};
+
+
   return (
     <div 
       className={`bg-zinc-900 rounded-xl p-4 flex flex-col justify-between group relative transition-all duration-200 hover:bg-zinc-800 hover:shadow-lg hover:shadow-green-500/10 ${file.type !== FileType.FOLDER ? 'cursor-pointer' : 'cursor-default'}`}
@@ -112,9 +144,13 @@ const FileCard: React.FC<FileCardProps> = ({ file, onDelete, onShare, onPreview 
                <button onClick={() => { onShare(file); setMenuOpen(false); }} className="w-full text-left flex items-center px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-700">
                 <Share2 className="w-4 h-4 mr-2" /> Share
               </button>
-              <button className="w-full text-left flex items-center px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-700">
+              <button 
+                onClick={handleDownload}  // Add this handler
+                className="w-full text-left flex items-center px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-700"
+              >
                 <Download className="w-4 h-4 mr-2" /> Download
               </button>
+
               <button onClick={() => onDelete(file.id)} className="w-full text-left flex items-center px-3 py-2 text-sm text-red-400 hover:bg-zinc-700 rounded-b-lg">
                 <Trash2 className="w-4 h-4 mr-2" /> Delete
               </button>

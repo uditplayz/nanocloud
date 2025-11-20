@@ -1,4 +1,3 @@
-// models/File.js
 const mongoose = require('mongoose');
 
 const fileSchema = new mongoose.Schema({
@@ -27,7 +26,29 @@ const fileSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true
-  }
+  },
+  // Sharing fields
+  isPublic: {
+    type: Boolean,
+    default: false
+  },
+  shareToken: {
+    type: String,
+    unique: true,
+    sparse: true
+  },
+  collaborators: [{
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    email: String,
+    permission: {
+      type: String,
+      enum: ['view', 'edit'],
+      default: 'view'
+    }
+  }]
 }, { timestamps: true });
 
 module.exports = mongoose.model('File', fileSchema);

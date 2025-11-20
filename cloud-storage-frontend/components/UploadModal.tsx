@@ -30,46 +30,93 @@ const UploadModal: React.FC<UploadModalProps> = ({ onClose, onUploadSuccess, cur
     }
   }
 
-  const simulateUpload = useCallback(async () => {
-    if (!selectedFile) return;
+const handleUpload = useCallback(async () => {
+  if (!selectedFile) return;
 
-    setIsUploading(true);
-    setUploadProgress(0);
+  setIsUploading(true);
+  setUploadProgress(0);
 
-    // Step 1: (Mock) Get Pre-Signed URL from backend
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const mockPresignedUrl = `https://s3.amazonaws.com/nanocloud-bucket/uploads/${currentUser.id}/${Date.now()}-${selectedFile.name}`;
-    console.log("Got pre-signed URL:", mockPresignedUrl);
+  try {
+    // STEP 1: Get Pre-Signed URL from Backend
+    const uploadUrlResponse = await fetch(`${import.meta.env.VITE_API_URL}/api/files/generate-upload-url`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-auth-token': localStorage.getItem('token') || '', // Adjust based on your auth token storage
+      },
+      body: JSON.stringify({
+        filename: selectedFile.name,
+        filetype: selectedFile.type,
+      }),
+    });
 
-    // Step 2: (Mock) Upload File Directly to S3
-    const uploadInterval = setInterval(() => {
-      setUploadProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(uploadInterval);
-          return 100;
+    if (!uploadUrlResponse.ok) {
+      throw new Error('Failed to get upload URL');
+    }
+
+    const { uploadUrl, s3Key } = await uploadUrlResponse.json();
+    console.log('Got pre-signed URL:', uploadUrl);
+
+    // STEP 2: Upload File Directly to S3 with Progress Tracking
+    const xhr = new XMLHttpRequest();
+    
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable) {
+        const percentComplete = Math.round((e.loaded / e.total) * 100);
+        setUploadProgress(percentComplete);
+      }
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      xhr.addEventListener('load', () => {
+        if (xhr.status === 200) {
+          resolve();
+        } else {
+          reject(new Error('Upload failed'));
         }
-        return prev + 10;
       });
-    }, 200);
+      xhr.addEventListener('error', () => reject(new Error('Upload failed')));
+      
+      xhr.open('PUT', uploadUrl);
+      xhr.setRequestHeader('Content-Type', selectedFile.type);
+      xhr.send(selectedFile);
+    });
 
-    await new Promise(resolve => setTimeout(resolve, 2500)); // Simulate upload time
+    console.log('S3 upload complete');
 
-    // Step 3: (Mock) Finalize Upload with our Backend
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const newFile: FileItem = {
-      id: `file_${Date.now()}`,
-      name: selectedFile.name,
-      type: selectedFile.type as FileType,
-      size: selectedFile.size,
-      lastModified: new Date(),
-      owner: currentUser.id,
-      s3Key: mockPresignedUrl.split('amazonaws.com/')[1],
-    };
+    // STEP 3: Finalize Upload with Backend
+    const finalizeResponse = await fetch(`${import.meta.env.VITE_API_URL}/api/files/finalize-upload`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-auth-token': localStorage.getItem('token') || '',
+      },
+      body: JSON.stringify({
+        originalFilename: selectedFile.name,
+        s3Key: s3Key,
+        mimetype: selectedFile.type,
+        fileSize: selectedFile.size,
+      }),
+    });
 
-    console.log("Finalized upload, created metadata:", newFile);
+    if (!finalizeResponse.ok) {
+      throw new Error('Failed to finalize upload');
+    }
+
+    const newFile = await finalizeResponse.json();
+    console.log('Upload finalized:', newFile);
+    
     onUploadSuccess(newFile);
+    onClose();
+  } catch (error) {
+    console.error('Upload failed:', error);
+    alert('Upload failed. Please try again.');
+  } finally {
     setIsUploading(false);
-  }, [selectedFile, onUploadSuccess, currentUser]);
+    setUploadProgress(0);
+  }
+}, [selectedFile, onUploadSuccess, onClose]);
+
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 backdrop-blur-sm">
@@ -124,12 +171,13 @@ const UploadModal: React.FC<UploadModalProps> = ({ onClose, onUploadSuccess, cur
 
         <div className="mt-8 flex justify-end">
           <button 
-            onClick={simulateUpload}
+            onClick={handleUpload}  // Changed from simulateUpload
             disabled={!selectedFile || isUploading}
             className="bg-green-500 text-black font-semibold px-6 py-2.5 rounded-lg disabled:bg-zinc-700 disabled:text-zinc-400 disabled:cursor-not-allowed hover:bg-green-400 transition-colors"
-          >
+            >
             {isUploading ? 'Uploading...' : 'Upload'}
           </button>
+
         </div>
       </div>
     </div>

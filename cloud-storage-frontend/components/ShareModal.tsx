@@ -39,48 +39,118 @@ const ShareModal: React.FC<ShareModalProps> = ({ file, onClose, onUpdateSharing,
     onUpdateSharing(file.id, newInfo);
   }, [file.id, onUpdateSharing]);
   
-  const handleInvite = () => {
+  const handleInvite = async () => {
     if (!inviteEmail || sharingInfo.collaborators.some(c => c.user.email === inviteEmail)) return;
     
-    // In a real app, you'd look up the user by email. Here we mock it.
-    const userToInvite = MOCK_USERS.find(u => u.email === inviteEmail) ?? {
-      id: `user_${Date.now()}`,
-      name: inviteEmail.split('@')[0],
-      email: inviteEmail,
-      avatarUrl: `https://i.pravatar.cc/150?u=${inviteEmail}`
-    };
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL}/api/sharing/${file.id}/collaborators`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-auth-token': localStorage.getItem('token') || '',
+          },
+          body: JSON.stringify({
+            email: inviteEmail,
+            permission: permission,
+          }),
+        }
+      );
 
-    const newCollaborator: Collaborator = { user: userToInvite, permission };
-    const updatedInfo = {
-      ...sharingInfo,
-      collaborators: [...sharingInfo.collaborators, newCollaborator],
-    };
-    handleUpdate(updatedInfo);
-    setInviteEmail('');
-  };
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.msg || 'Failed to add collaborator');
+      }
 
-  const handleRemoveCollaborator = (userId: string) => {
-    const updatedInfo = {
-      ...sharingInfo,
-      collaborators: sharingInfo.collaborators.filter(c => c.user.id !== userId),
-    };
-    handleUpdate(updatedInfo);
-  };
-  
-  const handlePermissionChange = (userId: string, newPermission: PermissionLevel) => {
-    const updatedInfo = {
+      const collaborators = await response.json();
+      
+      // Update local state
+      const updatedInfo = {
         ...sharingInfo,
-        collaborators: sharingInfo.collaborators.map(c => 
-            c.user.id === userId ? { ...c, permission: newPermission } : c
-        ),
+        collaborators: collaborators.map((c: any) => ({
+          user: {
+            id: c.userId,
+            email: c.email,
+            name: c.email.split('@')[0],
+            avatarUrl: `https://i.pravatar.cc/150?u=${c.email}`,
+          },
+          permission: c.permission,
+        })),
+      };
+      
+      handleUpdate(updatedInfo);
+      setInviteEmail('');
+    } catch (error: any) {
+      console.error('Failed to add collaborator:', error);
+      alert(error.message || 'Failed to add collaborator');
+    }
+  };
+
+    const handleRemoveCollaborator = async (userId: string) => {
+      try {
+        const response = await fetch(
+          `${import.meta.env.VITE_API_URL}/api/sharing/${file.id}/collaborators/${userId}`,
+          {
+            method: 'DELETE',
+            headers: {
+              'x-auth-token': localStorage.getItem('token') || '',
+            },
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error('Failed to remove collaborator');
+        }
+
+        const updatedInfo = {
+          ...sharingInfo,
+          collaborators: sharingInfo.collaborators.filter(c => c.user.id !== userId),
+        };
+        handleUpdate(updatedInfo);
+      } catch (error) {
+        console.error('Failed to remove collaborator:', error);
+        alert('Failed to remove collaborator');
+      }
     };
-    handleUpdate(updatedInfo);
+    
+    const handlePermissionChange = (userId: string, newPermission: PermissionLevel) => {
+      const updatedInfo = {
+          ...sharingInfo,
+          collaborators: sharingInfo.collaborators.map(c => 
+              c.user.id === userId ? { ...c, permission: newPermission } : c
+          ),
+      };
+      handleUpdate(updatedInfo);
+    };
+    
+  const handleTogglePublicLink = async (isPublic: boolean) => {
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL}/api/sharing/${file.id}/public`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-auth-token': localStorage.getItem('token') || '',
+          },
+          body: JSON.stringify({ isPublic }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to update public sharing');
+      }
+
+      const { publicLink } = await response.json();
+      const updatedInfo = { ...sharingInfo, isPublic, publicLink };
+      handleUpdate(updatedInfo);
+    } catch (error) {
+      console.error('Failed to toggle public link:', error);
+      alert('Failed to update sharing settings');
+    }
   };
-  
-  const handleTogglePublicLink = (isPublic: boolean) => {
-    const updatedInfo = { ...sharingInfo, isPublic };
-    handleUpdate(updatedInfo);
-  };
+
   
   const handleCopyLink = () => {
     navigator.clipboard.writeText(sharingInfo.publicLink);
