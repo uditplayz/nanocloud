@@ -1,0 +1,5 @@
+{
+  "name": "NanoCloud - Smart File Storage",
+  "description": "A sleek, modern cloud file storage application with an intuitive interface, inspired by Apple's design philosophy. It allows users to upload, manage, and browse their files securely. Features AI-powered summaries for text files.",
+  "requestFramePermissions": []
+}
