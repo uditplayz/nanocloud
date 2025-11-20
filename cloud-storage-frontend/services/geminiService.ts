@@ -1,46 +1,41 @@
+// Frontend -> Backend proxy for AI summarization
+// This file calls a backend endpoint (`/api/ai/summarize`) so the API key
+// stays on the server. For local dev you can set `VITE_AI_ENDPOINT` to
+// override the endpoint.
 
-import { GoogleGenAI } from "@google/genai";
+const API_ENDPOINT = (import.meta as any)?.env?.VITE_AI_ENDPOINT ?? '/api/ai/summarize';
 
-// IMPORTANT: This key is for demonstration purposes. 
-// In a real application, this should be handled securely on a backend server.
-// For this frontend-only example, we assume process.env.API_KEY is available.
-const API_KEY = process.env.API_KEY;
-
-if (!API_KEY) {
-  console.warn("Gemini API key not found. Summarization feature will be disabled.");
-}
-
-// Only initialize if API_KEY is present
-const ai = API_KEY ? new GoogleGenAI({ apiKey: API_KEY }) : null;
+const mockSummary = (text: string) => {
+  return `(mock) ${text.slice(0, 120)}${text.length > 120 ? '…' : ''}`;
+};
 
 export const summarizeText = async (textToSummarize: string): Promise<string> => {
-  if (!ai) {
-    // Simulate a delay and return a mock summary if API key is not available
-    return new Promise(resolve => {
-      setTimeout(() => {
-        resolve("This is a mock summary because the Gemini API key is not configured.");
-      }, 1500);
-    });
+  if (!textToSummarize) return '';
+
+  // If no backend configured, return a mock summary after a short delay
+  if (!API_ENDPOINT) {
+    return new Promise(resolve => setTimeout(() => resolve(mockSummary(textToSummarize)), 800));
   }
 
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: `Summarize the following text in one or two sentences: "${textToSummarize}"`,
-      config: {
-        systemInstruction: "You are a helpful assistant that provides concise summaries of file content.",
-        temperature: 0.5,
-      }
+    const resp = await fetch(API_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: textToSummarize }),
     });
-    
-    const summary = response.text;
-    if (!summary) {
-        throw new Error("No summary was generated.");
-    }
-    return summary.trim();
 
-  } catch (error) {
-    console.error('Error calling Gemini API:', error);
-    throw new Error('Failed to generate summary from Gemini API.');
+    if (!resp.ok) {
+      // Fallback to mock summary when proxy is not available or returns error
+      console.warn('AI proxy returned non-OK response', resp.status);
+      return mockSummary(textToSummarize);
+    }
+
+    const data = await resp.json();
+    if (data && data.summary) return data.summary;
+
+    return mockSummary(textToSummarize);
+  } catch (err) {
+    console.error('Error calling AI proxy:', err);
+    return mockSummary(textToSummarize);
   }
 };
