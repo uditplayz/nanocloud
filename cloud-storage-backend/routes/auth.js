@@ -3,6 +3,7 @@ const router = express.Router();
 const bcryptjs = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User'); // Import User model
+const auth = require('../middleware/auth');
 
 /**
  * @route   POST /api/auth/register
@@ -92,6 +93,22 @@ router.post('/login', async (req, res) => {
         res.json({ token }); // Send the token to the client
       }
     );
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server error');
+  }
+});
+
+/**
+ * @route   GET /api/auth/me
+ * @desc    Get currently logged-in user's profile
+ * @access  Private
+ */
+router.get('/me', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('-password');
+    if (!user) return res.status(404).json({ msg: 'User not found' });
+    res.json(user);
   } catch (err) {
     console.error(err.message);
     res.status(500).send('Server error');

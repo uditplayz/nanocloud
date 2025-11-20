@@ -1,5 +1,6 @@
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import { tokenService } from './services/tokenService';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import FileBrowser from './components/FileBrowser';
@@ -13,6 +14,7 @@ import { MOCK_FILES } from './constants';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [activeSection, setActiveSection] = useState<NavSection>(NavSection.RECENT);
   const [files, setFiles] = useState<FileItem[]>(MOCK_FILES);
   const [isUploadModalOpen, setUploadModalOpen] = useState(false);
@@ -29,7 +31,22 @@ const App: React.FC = () => {
   }, []);
 
   const handleLogout = useCallback(() => {
+    tokenService.removeToken();
     setCurrentUser(null);
+  }, []);
+
+  useEffect(() => {
+    // On mount, check for existing token and set a placeholder user
+    const token = tokenService.getToken();
+    if (token) {
+      setCurrentUser({
+        id: 'stored_user',
+        name: 'User',
+        email: 'user@example.com',
+        avatarUrl: ''
+      });
+    }
+    setIsLoading(false);
   }, []);
 
   const handleUploadSuccess = useCallback((newFile: FileItem) => {
@@ -101,6 +118,8 @@ const App: React.FC = () => {
       file.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
   }, [files, searchQuery]);
+
+  if (isLoading) return <div>Loading...</div>;
 
   if (!currentUser) {
     return <AuthScreen onLogin={handleLogin} />;
