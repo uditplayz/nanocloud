@@ -3,6 +3,8 @@ import React, { useState } from 'react';
 import { CloudDrizzle, ArrowRight, Mail, Lock, User as UserIcon, Loader2 } from 'lucide-react';
 import { User } from '../types';
 import { authService } from '../services/authService';
+import { tokenService } from '../services/tokenService';
+
 
 interface AuthScreenProps {
   onLogin: (user: User) => void;
@@ -40,7 +42,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
       }
 
       // Store token in localStorage
-      localStorage.setItem('authToken', token);
+      tokenService.setToken(token);
 
       // Build a simple user object for now (replace with /me endpoint later)
       const user: User = {

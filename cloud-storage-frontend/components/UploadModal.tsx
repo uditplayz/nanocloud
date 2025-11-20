@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { X, UploadCloud, File as FileIcon } from 'lucide-react';
 import { FileItem, FileType, User } from '../types';
+import { tokenService } from '../services/tokenService';
 
 interface UploadModalProps {
   onClose: () => void;
@@ -30,93 +31,99 @@ const UploadModal: React.FC<UploadModalProps> = ({ onClose, onUploadSuccess, cur
     }
   }
 
-const handleUpload = useCallback(async () => {
-  if (!selectedFile) return;
+  const handleUpload = useCallback(async () => {
+    if (!selectedFile) return;
 
-  setIsUploading(true);
-  setUploadProgress(0);
+    setIsUploading(true);
+    setUploadProgress(0);
 
-  try {
-    // STEP 1: Get Pre-Signed URL from Backend
-    const uploadUrlResponse = await fetch(`${import.meta.env.VITE_API_URL}/api/files/generate-upload-url`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-auth-token': localStorage.getItem('token') || '', // Adjust based on your auth token storage
-      },
-      body: JSON.stringify({
-        filename: selectedFile.name,
-        filetype: selectedFile.type,
-      }),
-    });
+    try {
+      // STEP 1: Get Pre-Signed URL from Backend
+      const uploadUrlResponse = await fetch(`${import.meta.env.VITE_API_URL}/api/files/generate-upload-url`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-token': tokenService.getToken() || '',
+        },
+        body: JSON.stringify({
+          filename: selectedFile.name,
+          filetype: selectedFile.type,
+        }),
+      });
 
-    if (!uploadUrlResponse.ok) {
-      throw new Error('Failed to get upload URL');
-    }
-
-    const { uploadUrl, s3Key } = await uploadUrlResponse.json();
-    console.log('Got pre-signed URL:', uploadUrl);
-
-    // STEP 2: Upload File Directly to S3 with Progress Tracking
-    const xhr = new XMLHttpRequest();
-    
-    xhr.upload.addEventListener('progress', (e) => {
-      if (e.lengthComputable) {
-        const percentComplete = Math.round((e.loaded / e.total) * 100);
-        setUploadProgress(percentComplete);
+      if (!uploadUrlResponse.ok) {
+        throw new Error('Failed to get upload URL');
       }
-    });
 
-    await new Promise<void>((resolve, reject) => {
-      xhr.addEventListener('load', () => {
-        if (xhr.status === 200) {
-          resolve();
-        } else {
-          reject(new Error('Upload failed'));
+      const { uploadUrl, s3Key } = await uploadUrlResponse.json();
+
+      // STEP 2: Upload File Directly to S3 with Progress Tracking
+      const xhr = new XMLHttpRequest();
+      
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const percentComplete = Math.round((e.loaded / e.total) * 100);
+          setUploadProgress(percentComplete);
         }
       });
-      xhr.addEventListener('error', () => reject(new Error('Upload failed')));
-      
-      xhr.open('PUT', uploadUrl);
-      xhr.setRequestHeader('Content-Type', selectedFile.type);
-      xhr.send(selectedFile);
-    });
 
-    console.log('S3 upload complete');
+      await new Promise<void>((resolve, reject) => {
+        xhr.addEventListener('load', () => {
+          if (xhr.status === 200) {
+            resolve();
+          } else {
+            reject(new Error('Upload failed'));
+          }
+        });
+        xhr.addEventListener('error', () => reject(new Error('Upload failed')));
+        
+        xhr.open('PUT', uploadUrl);
+        xhr.setRequestHeader('Content-Type', selectedFile.type);
+        xhr.send(selectedFile);
+      });
 
-    // STEP 3: Finalize Upload with Backend
-    const finalizeResponse = await fetch(`${import.meta.env.VITE_API_URL}/api/files/finalize-upload`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-auth-token': localStorage.getItem('token') || '',
-      },
-      body: JSON.stringify({
-        originalFilename: selectedFile.name,
-        s3Key: s3Key,
-        mimetype: selectedFile.type,
-        fileSize: selectedFile.size,
-      }),
-    });
+      // STEP 3: Finalize Upload with Backend
+      const finalizeResponse = await fetch(`${import.meta.env.VITE_API_URL}/api/files/finalize-upload`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-token': tokenService.getToken() || '',
+        },
+        body: JSON.stringify({
+          originalFilename: selectedFile.name,
+          s3Key: s3Key,
+          mimetype: selectedFile.type,
+          fileSize: selectedFile.size,
+        }),
+      });
 
-    if (!finalizeResponse.ok) {
-      throw new Error('Failed to finalize upload');
+      if (!finalizeResponse.ok) {
+        throw new Error('Failed to finalize upload');
+      }
+
+      const backendFile = await finalizeResponse.json();
+
+      // Transform backend response to match frontend FileItem type
+      const newFile: FileItem = {
+        id: backendFile._id,
+        name: backendFile.originalFilename,
+        type: backendFile.mimetype as FileType,
+        size: backendFile.fileSize,
+        lastModified: new Date(backendFile.uploadDate || backendFile.createdAt),
+        owner: backendFile.owner,
+        s3Key: backendFile.s3Key,
+      };
+
+      onUploadSuccess(newFile);
+      onClose();
+    } catch (error) {
+      console.error('Upload failed:', error);
+      alert('Upload failed. Please try again.');
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(0);
     }
-
-    const newFile = await finalizeResponse.json();
-    console.log('Upload finalized:', newFile);
-    
-    onUploadSuccess(newFile);
-    onClose();
-  } catch (error) {
-    console.error('Upload failed:', error);
-    alert('Upload failed. Please try again.');
-  } finally {
-    setIsUploading(false);
-    setUploadProgress(0);
-  }
-}, [selectedFile, onUploadSuccess, onClose]);
-
+  }, [selectedFile, onUploadSuccess, onClose]);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 backdrop-blur-sm">
@@ -171,13 +178,12 @@ const handleUpload = useCallback(async () => {
 
         <div className="mt-8 flex justify-end">
           <button 
-            onClick={handleUpload}  // Changed from simulateUpload
+            onClick={handleUpload}
             disabled={!selectedFile || isUploading}
             className="bg-green-500 text-black font-semibold px-6 py-2.5 rounded-lg disabled:bg-zinc-700 disabled:text-zinc-400 disabled:cursor-not-allowed hover:bg-green-400 transition-colors"
-            >
+          >
             {isUploading ? 'Uploading...' : 'Upload'}
           </button>
-
         </div>
       </div>
     </div>

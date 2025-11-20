@@ -1,6 +1,7 @@
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { tokenService } from './services/tokenService';
+import { fileService } from './services/fileService';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import FileBrowser from './components/FileBrowser';
@@ -16,7 +17,7 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [activeSection, setActiveSection] = useState<NavSection>(NavSection.RECENT);
-  const [files, setFiles] = useState<FileItem[]>(MOCK_FILES);
+  const [files, setFiles] = useState<FileItem[]>([]);
   const [isUploadModalOpen, setUploadModalOpen] = useState(false);
   const [isShareModalOpen, setShareModalOpen] = useState(false);
   const [isCreateFolderModalOpen, setCreateFolderModalOpen] = useState(false);
@@ -26,6 +27,16 @@ const App: React.FC = () => {
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const [fileToPreview, setFileToPreview] = useState<FileItem | null>(null);
 
+  const loadFiles = useCallback(async () => {
+    try {
+      const fetchedFiles = await fileService.getFiles();
+      setFiles(fetchedFiles);
+    } catch (error) {
+      console.error('Failed to load files:', error);
+      alert('Failed to load files');
+    }
+  }, []);
+
   const handleLogin = useCallback((user: User) => {
     setCurrentUser(user);
   }, []);
@@ -33,10 +44,11 @@ const App: React.FC = () => {
   const handleLogout = useCallback(() => {
     tokenService.removeToken();
     setCurrentUser(null);
+    setFiles([]); // Clear files on logout
   }, []);
 
   useEffect(() => {
-    // On mount, check for existing token and set a placeholder user
+    // On mount, check for existing token
     const token = tokenService.getToken();
     if (token) {
       setCurrentUser({
@@ -48,6 +60,13 @@ const App: React.FC = () => {
     }
     setIsLoading(false);
   }, []);
+
+  // Load files when user logs in
+  useEffect(() => {
+    if (currentUser) {
+      loadFiles();
+    }
+  }, [currentUser, loadFiles]);
 
   const handleUploadSuccess = useCallback((newFile: FileItem) => {
     setFiles(prevFiles => [newFile, ...prevFiles]);
@@ -74,9 +93,16 @@ const App: React.FC = () => {
     setCreateFolderModalOpen(false);
   }, [currentUser]);
 
-  const handleDeleteFile = useCallback((fileId: string) => {
-    setFiles(prevFiles => prevFiles.filter(file => file.id !== fileId));
-  }, []);
+  
+  const handleDeleteFile = useCallback(async (fileId: string) => {
+      try {
+        await fileService.deleteFile(fileId);
+        setFiles(prevFiles => prevFiles.filter(file => file.id !== fileId));
+      } catch (error) {
+        console.error('Failed to delete file:', error);
+        alert('Failed to delete file');
+      }
+    }, []);
 
   const handleOpenShareModal = useCallback((file: FileItem) => {
     setFileToShare(file);
