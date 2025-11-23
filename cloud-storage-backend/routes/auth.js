@@ -14,6 +14,11 @@ router.post('/register', async (req, res) => {
   const { username, email, password } = req.body;
 
   try {
+    // Validate input
+    if (!username || !email || !password) {
+      return res.status(400).json({ msg: 'Please provide username, email, and password' });
+    }
+
     // 1. Check if user already exists
     let user = await User.findOne({ email });
     if (user) {
@@ -46,13 +51,16 @@ router.post('/register', async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: '3h' }, // Token expires in 3 hours
       (err, token) => {
-        if (err) throw err;
+        if (err) {
+          console.error('JWT signing error:', err.message);
+          return res.status(500).json({ msg: 'Server error', error: err.message });
+        }
         res.json({ token });
       }
     );
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server error');
+    console.error('Registration error:', err.message);
+    res.status(500).json({ msg: 'Server error', error: err.message });
   }
 });
 
@@ -65,6 +73,11 @@ router.post('/login', async (req, res) => {
   const { email, password } = req.body;
 
   try {
+    // Validate input
+    if (!email || !password) {
+      return res.status(400).json({ msg: 'Please provide email and password' });
+    }
+
     // 1. Check if user exists
     const user = await User.findOne({ email });
     if (!user) {
@@ -89,13 +102,16 @@ router.post('/login', async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: '3h' },
       (err, token) => {
-        if (err) throw err;
+        if (err) {
+          console.error('JWT signing error:', err.message);
+          return res.status(500).json({ msg: 'Server error', error: err.message });
+        }
         res.json({ token }); // Send the token to the client
       }
     );
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server error');
+    console.error('Login error:', err.message);
+    res.status(500).json({ msg: 'Server error', error: err.message });
   }
 });
 
@@ -110,8 +126,8 @@ router.get('/me', auth, async (req, res) => {
     if (!user) return res.status(404).json({ msg: 'User not found' });
     res.json(user);
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server error');
+    console.error('Get user error:', err.message);
+    res.status(500).json({ msg: 'Server error', error: err.message });
   }
 });
 
