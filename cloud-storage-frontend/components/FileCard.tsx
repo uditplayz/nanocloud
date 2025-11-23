@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { FileItem, FileType } from '../types';
 import { FileText, FileImage, File, Folder, MoreVertical, Download, Trash2, Sparkles, Share2 } from 'lucide-react';
@@ -42,6 +41,7 @@ const formatBytes = (bytes: number, decimals = 2) => {
 const FileCard: React.FC<FileCardProps> = ({ file, onDelete, onShare, onPreview }) => {
   const [isMenuOpen, setMenuOpen] = useState(false);
   const [isSummarizing, setIsSummarizing] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [summary, setSummary] = useState<string | null>(null);
 
   const handleSummarize = async () => {
@@ -72,36 +72,57 @@ const FileCard: React.FC<FileCardProps> = ({ file, onDelete, onShare, onPreview 
   };
 
   const handleDownload = async (e: React.MouseEvent) => {
-  e.stopPropagation();
-  setMenuOpen(false);
-  
-  try {
-    const response = await fetch(`${import.meta.env.VITE_API_URL}/api/files/download/${file.id}`, {
-      method: 'GET',
-      headers: {
-        'x-auth-token': tokenService.getToken() || '',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to get download URL');
-    }
-
-    const { downloadUrl } = await response.json();
+    e.stopPropagation();
+    setMenuOpen(false);
+    setIsDownloading(true);
     
-    // Trigger download
-    const link = document.createElement('a');
-    link.href = downloadUrl;
-    link.download = file.name;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  } catch (error) {
-    console.error('Download failed:', error);
-    alert('Download failed. Please try again.');
-  }
-};
+    try {
+      const token = tokenService.getToken();
+      if (!token) {
+        throw new Error('Not authenticated. Please log in again.');
+      }
 
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/files/download/${file.id}`, {
+        method: 'GET',
+        headers: {
+          'x-auth-token': token,
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Session expired. Please log in again.');
+        } else if (response.status === 404) {
+          throw new Error('File not found.');
+        } else {
+          throw new Error('Failed to get download URL');
+        }
+      }
+
+      const { downloadUrl } = await response.json();
+      
+      if (!downloadUrl) {
+        throw new Error('No download URL received from server');
+      }
+
+      // Trigger download using pre-signed S3 URL
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = file.name;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      console.log('Download initiated successfully for:', file.name);
+    } catch (error: any) {
+      console.error('Download failed:', error);
+      alert(error.message || 'Download failed. Please try again.');
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   return (
     <div 
@@ -142,16 +163,17 @@ const FileCard: React.FC<FileCardProps> = ({ file, onDelete, onShare, onPreview 
                   <Sparkles className="w-4 h-4 mr-2" /> Summarize
                 </button>
               )}
-               <button onClick={() => { onShare(file); setMenuOpen(false); }} className="w-full text-left flex items-center px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-700">
+              <button onClick={() => { onShare(file); setMenuOpen(false); }} className="w-full text-left flex items-center px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-700">
                 <Share2 className="w-4 h-4 mr-2" /> Share
               </button>
               <button 
-                onClick={handleDownload}  // Add this handler
-                className="w-full text-left flex items-center px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-700"
+                onClick={handleDownload}
+                disabled={isDownloading}
+                className={`w-full text-left flex items-center px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-700 ${isDownloading ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
-                <Download className="w-4 h-4 mr-2" /> Download
+                <Download className="w-4 h-4 mr-2" /> 
+                {isDownloading ? 'Downloading...' : 'Download'}
               </button>
-
               <button onClick={() => onDelete(file.id)} className="w-full text-left flex items-center px-3 py-2 text-sm text-red-400 hover:bg-zinc-700 rounded-b-lg">
                 <Trash2 className="w-4 h-4 mr-2" /> Delete
               </button>
