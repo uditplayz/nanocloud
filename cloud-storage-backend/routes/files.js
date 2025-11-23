@@ -32,8 +32,8 @@ router.get('/', auth, async (req, res) => {
     const files = await File.find({ owner: req.user.id }).sort({ uploadDate: -1 });
     res.json(files);
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server error');
+    console.error('Error fetching files:', err.message);
+    res.status(500).json({ msg: 'Server error', error: err.message });
   }
 });
 
@@ -43,8 +43,13 @@ router.get('/', auth, async (req, res) => {
  * @access  Private
  */
 router.post('/generate-upload-url', auth, async (req, res) => { 
-  const { filename, filetype } = req.body; //
-  const userId = req.user.id; //
+  const { filename, filetype } = req.body;
+  const userId = req.user.id;
+
+  // Validate input
+  if (!filename || !filetype) {
+    return res.status(400).json({ msg: 'Filename and filetype are required' });
+  }
 
   // Create a unique S3 key for the file
   const s3Key = `uploads/${userId}/${Date.now()}-${filename}`;
@@ -60,8 +65,8 @@ router.post('/generate-upload-url', auth, async (req, res) => {
     const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
     res.json({ uploadUrl, s3Key });
   } catch (err) {
-    console.error(err);
-    res.status(500).send('Server error');
+    console.error('Error generating upload URL:', err.message);
+    res.status(500).json({ msg: 'Server error', error: err.message });
   }
 });
 
@@ -71,7 +76,12 @@ router.post('/generate-upload-url', auth, async (req, res) => {
  * @access  Private
  */
 router.post('/finalize-upload', auth, async (req, res) => { 
-  const { originalFilename, s3Key, mimetype, fileSize } = req.body; 
+  const { originalFilename, s3Key, mimetype, fileSize } = req.body;
+
+  // Validate input
+  if (!originalFilename || !s3Key || !mimetype || !fileSize) {
+    return res.status(400).json({ msg: 'Missing required fields' });
+  }
 
   try {
     // Create new file document in MongoDB 
@@ -86,8 +96,8 @@ router.post('/finalize-upload', auth, async (req, res) => {
     await newFile.save();
     res.json(newFile);
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server error');
+    console.error('Error finalizing upload:', err.message);
+    res.status(500).json({ msg: 'Server error', error: err.message });
   }
 });
 
@@ -121,8 +131,8 @@ router.delete('/:id', auth, async (req, res) => {
 
     res.json({ msg: 'File deleted successfully' });
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server error');
+    console.error('Error deleting file:', err.message);
+    res.status(500).json({ msg: 'Server error', error: err.message });
   }
 });
 
@@ -143,7 +153,7 @@ router.get('/download/:id', auth, async (req, res) => {
       return res.status(401).json({ msg: 'Not authorized' });
     }
 
-    // FIXED: Add ResponseContentDisposition to force download
+    // Add ResponseContentDisposition to force download
     const command = new GetObjectCommand({
       Bucket: process.env.S3_BUCKET_NAME,
       Key: file.s3Key,
@@ -154,8 +164,8 @@ router.get('/download/:id', auth, async (req, res) => {
     const downloadUrl = await getSignedUrl(s3Client, command, { expiresIn: 900 });
     res.json({ downloadUrl, filename: file.originalFilename });
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server error');
+    console.error('Error generating download URL:', err.message);
+    res.status(500).json({ msg: 'Server error', error: err.message });
   }
 });
 
