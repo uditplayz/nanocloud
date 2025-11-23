@@ -151,10 +151,11 @@ router.get('/public/:shareToken', async (req, res) => {
       return res.status(404).json({ msg: 'File not found or not publicly shared' });
     }
     
-    // Generate download URL
+    // FIXED: Add ResponseContentDisposition to force download
     const command = new GetObjectCommand({
       Bucket: process.env.S3_BUCKET_NAME,
       Key: file.s3Key,
+      ResponseContentDisposition: `attachment; filename="${file.originalFilename}"`,
     });
     
     const downloadUrl = await getSignedUrl(s3Client, command, { expiresIn: 900 });
