@@ -1,5 +1,5 @@
-
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { tokenService } from './services/tokenService';
 import { fileService } from './services/fileService';
 import Sidebar from './components/Sidebar';
@@ -10,12 +10,14 @@ import ShareModal from './components/ShareModal';
 import FilePreviewModal from './components/FilePreviewModal';
 import AuthScreen from './components/AuthScreen';
 import CreateFolderModal from './components/CreateFolderModal';
+import PublicSharePage from './components/PublicSharePage';
 import { NavSection, FileItem, User, SharingInfo, FileType } from './types';
 import { MOCK_FILES } from './constants';
 
-const App: React.FC = () => {
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+const MainApp: React.FC<{
+  currentUser: User;
+  onLogout: () => void;
+}> = ({ currentUser, onLogout }) => {
   const [activeSection, setActiveSection] = useState<NavSection>(NavSection.RECENT);
   const [files, setFiles] = useState<FileItem[]>([]);
   const [isUploadModalOpen, setUploadModalOpen] = useState(false);
@@ -37,36 +39,10 @@ const App: React.FC = () => {
     }
   }, []);
 
-  const handleLogin = useCallback((user: User) => {
-    setCurrentUser(user);
-  }, []);
-
-  const handleLogout = useCallback(() => {
-    tokenService.removeToken();
-    setCurrentUser(null);
-    setFiles([]); // Clear files on logout
-  }, []);
-
+  // Load files when component mounts
   useEffect(() => {
-    // On mount, check for existing token
-    const token = tokenService.getToken();
-    if (token) {
-      setCurrentUser({
-        id: 'stored_user',
-        name: 'User',
-        email: 'user@example.com',
-        avatarUrl: ''
-      });
-    }
-    setIsLoading(false);
-  }, []);
-
-  // Load files when user logs in
-  useEffect(() => {
-    if (currentUser) {
-      loadFiles();
-    }
-  }, [currentUser, loadFiles]);
+    loadFiles();
+  }, [loadFiles]);
 
   const handleUploadSuccess = useCallback((newFile: FileItem) => {
     setFiles(prevFiles => [newFile, ...prevFiles]);
@@ -74,7 +50,6 @@ const App: React.FC = () => {
   }, []);
   
   const handleCreateFolder = useCallback((folderName: string) => {
-    if (!currentUser) return;
     const newFolder: FileItem = {
       id: `folder_${Date.now()}`,
       name: folderName,
@@ -91,18 +66,17 @@ const App: React.FC = () => {
     };
     setFiles(prevFiles => [newFolder, ...prevFiles]);
     setCreateFolderModalOpen(false);
-  }, [currentUser]);
+  }, [currentUser.id]);
 
-  
   const handleDeleteFile = useCallback(async (fileId: string) => {
-      try {
-        await fileService.deleteFile(fileId);
-        setFiles(prevFiles => prevFiles.filter(file => file.id !== fileId));
-      } catch (error) {
-        console.error('Failed to delete file:', error);
-        alert('Failed to delete file');
-      }
-    }, []);
+    try {
+      await fileService.deleteFile(fileId);
+      setFiles(prevFiles => prevFiles.filter(file => file.id !== fileId));
+    } catch (error) {
+      console.error('Failed to delete file:', error);
+      alert('Failed to delete file');
+    }
+  }, []);
 
   const handleOpenShareModal = useCallback((file: FileItem) => {
     setFileToShare(file);
@@ -120,7 +94,7 @@ const App: React.FC = () => {
         file.id === fileId ? { ...file, sharingInfo: updatedInfo } : file
       )
     );
-     if (fileToShare && fileToShare.id === fileId) {
+    if (fileToShare && fileToShare.id === fileId) {
       setFileToShare(prev => prev ? { ...prev, sharingInfo: updatedInfo } : null);
     }
   }, [fileToShare]);
@@ -145,12 +119,6 @@ const App: React.FC = () => {
     );
   }, [files, searchQuery]);
 
-  if (isLoading) return <div>Loading...</div>;
-
-  if (!currentUser) {
-    return <AuthScreen onLogin={handleLogin} />;
-  }
-
   return (
     <div className="flex h-screen bg-black font-sans overflow-hidden">
       <Sidebar
@@ -166,7 +134,7 @@ const App: React.FC = () => {
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
           onMenuClick={() => setSidebarOpen(true)}
-          onLogout={handleLogout}
+          onLogout={onLogout}
         />
         <FileBrowser 
           files={filteredFiles} 
@@ -204,6 +172,57 @@ const App: React.FC = () => {
         />
       )}
     </div>
+  );
+};
+
+const App: React.FC = () => {
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const handleLogin = useCallback((user: User) => {
+    setCurrentUser(user);
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    tokenService.removeToken();
+    setCurrentUser(null);
+  }, []);
+
+  useEffect(() => {
+    // On mount, check for existing token
+    const token = tokenService.getToken();
+    if (token) {
+      setCurrentUser({
+        id: 'stored_user',
+        name: 'User',
+        email: 'user@example.com',
+        avatarUrl: ''
+      });
+    }
+    setIsLoading(false);
+  }, []);
+
+  if (isLoading) return <div>Loading...</div>;
+
+  return (
+    <Router>
+      <Routes>
+        {/* Public share route - no auth required */}
+        <Route path="/share/:shareToken" element={<PublicSharePage />} />
+        
+        {/* Protected routes - require authentication */}
+        <Route path="/" element={
+          currentUser ? (
+            <MainApp currentUser={currentUser} onLogout={handleLogout} />
+          ) : (
+            <AuthScreen onLogin={handleLogin} />
+          )
+        } />
+        
+        {/* Catch all - redirect to home */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Router>
   );
 };
 
