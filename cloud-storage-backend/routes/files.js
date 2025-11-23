@@ -126,7 +126,6 @@ router.delete('/:id', auth, async (req, res) => {
   }
 });
 
-// backend endpoint for download button.
 /**
  * @route   GET /api/files/download/:id
  * @desc    Get a pre-signed URL for downloading a file
@@ -144,14 +143,16 @@ router.get('/download/:id', auth, async (req, res) => {
       return res.status(401).json({ msg: 'Not authorized' });
     }
 
+    // FIXED: Add ResponseContentDisposition to force download
     const command = new GetObjectCommand({
       Bucket: process.env.S3_BUCKET_NAME,
       Key: file.s3Key,
+      ResponseContentDisposition: `attachment; filename="${file.originalFilename}"`,
     });
 
     // Generate a pre-signed URL for download, valid for 15 minutes
     const downloadUrl = await getSignedUrl(s3Client, command, { expiresIn: 900 });
-    res.json({ downloadUrl });
+    res.json({ downloadUrl, filename: file.originalFilename });
   } catch (err) {
     console.error(err.message);
     res.status(500).send('Server error');
