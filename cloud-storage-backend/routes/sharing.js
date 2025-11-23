@@ -46,8 +46,8 @@ router.post('/:fileId/public', auth, async (req, res) => {
       publicLink: file.isPublic ? `${process.env.FRONTEND_URL}/share/${file.shareToken}` : null,
     });
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server error');
+    console.error('Error toggling public link:', err.message);
+    res.status(500).json({ msg: 'Server error', error: err.message });
   }
 });
 
@@ -59,6 +59,12 @@ router.post('/:fileId/public', auth, async (req, res) => {
 router.post('/:fileId/collaborators', auth, async (req, res) => {
   try {
     const { email, permission } = req.body;
+    
+    // Validate input
+    if (!email) {
+      return res.status(400).json({ msg: 'Email is required' });
+    }
+
     const file = await File.findById(req.params.fileId);
     
     if (!file) {
@@ -69,12 +75,17 @@ router.post('/:fileId/collaborators', auth, async (req, res) => {
       return res.status(401).json({ msg: 'Not authorized' });
     }
     
-    // Find user by email (you'll need a User model lookup)
+    // Find user by email
     const User = require('../models/User');
     const collaboratorUser = await User.findOne({ email });
     
     if (!collaboratorUser) {
-      return res.status(404).json({ msg: 'User not found' });
+      return res.status(404).json({ msg: 'User not found with this email address' });
+    }
+    
+    // Check if trying to add yourself
+    if (collaboratorUser._id.toString() === req.user.id) {
+      return res.status(400).json({ msg: 'You cannot add yourself as a collaborator' });
     }
     
     // Check if already a collaborator
@@ -100,8 +111,8 @@ router.post('/:fileId/collaborators', auth, async (req, res) => {
     
     res.json(file.collaborators);
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server error');
+    console.error('Error adding collaborator:', err.message);
+    res.status(500).json({ msg: 'Server error', error: err.message });
   }
 });
 
@@ -130,8 +141,8 @@ router.delete('/:fileId/collaborators/:userId', auth, async (req, res) => {
     
     res.json(file.collaborators);
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server error');
+    console.error('Error removing collaborator:', err.message);
+    res.status(500).json({ msg: 'Server error', error: err.message });
   }
 });
 
@@ -151,7 +162,7 @@ router.get('/public/:shareToken', async (req, res) => {
       return res.status(404).json({ msg: 'File not found or not publicly shared' });
     }
     
-    // FIXED: Add ResponseContentDisposition to force download
+    // Add ResponseContentDisposition to force download
     const command = new GetObjectCommand({
       Bucket: process.env.S3_BUCKET_NAME,
       Key: file.s3Key,
@@ -167,8 +178,8 @@ router.get('/public/:shareToken', async (req, res) => {
       downloadUrl,
     });
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server error');
+    console.error('Error fetching public file:', err.message);
+    res.status(500).json({ msg: 'Server error', error: err.message });
   }
 });
 
