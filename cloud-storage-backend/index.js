@@ -6,7 +6,14 @@ const sharingRoutes = require('./routes/sharing');
 
 const app = express();
 
-app.use(cors());
+// app.use(cors());
+app.use(cors({
+  origin: [
+    'https://nanocloud.vercel.app',
+    'http://localhost:5173'  // For local development
+  ],
+  credentials: true
+}));
 app.use(express.json());
 
 // Optional Mongo connection if MONGO_URI is provided
