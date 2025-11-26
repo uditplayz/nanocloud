@@ -9,7 +9,7 @@ const app = express();
 // app.use(cors());
 app.use(cors({
   origin: [
-    'https://nanocloud.vercel.app',
+    'https://nanocloud-frontend.vercel.app',
     'http://localhost:5173'  // For local development
   ],
   credentials: true
