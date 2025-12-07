@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Ebook Reader</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather:wght@300;400;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.min.js"></script>
+
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.worker.min.js';
+
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        serif: ['Merriweather', 'serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* Smooth scrolling */
+        html { scroll-behavior: smooth; }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        .dark ::-webkit-scrollbar-thumb { background: #475569; }
+        .dark ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+        /* Range Slider */
+        input[type=range] {
+            -webkit-appearance: none;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px; width: 16px;
+            border-radius: 50%;
+            background: #4f46e5;
+            margin-top: -6px;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%; height: 4px;
+            background: #e2e8f0; border-radius: 2px;
+        }
+        .dark input[type=range]::-webkit-slider-runnable-track { background: #334155; }
+
+        /* Sentence Highlighting */
+        .sentence {
+            transition: background-color 0.2s;
+            border-radius: 2px;
+            padding: 2px 0;
+        }
+        .sentence.active {
+            background-color: #fef08a; /* yellow-200 */
+            color: #0f172a;
+        }
+        .dark .sentence.active {
+            background-color: #fbbf24; /* amber-400 */
+            color: #000;
+        }
+
+        /* Fade In */
+        .fade-in { animation: fadeIn 0.5s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body class="bg-slate-50 dark:bg-slate-900 h-screen flex flex-col overflow-hidden text-slate-800 dark:text-slate-100 transition-colors duration-300">
+
+    <!-- Header -->
+    <header class="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 h-16 flex items-center justify-between px-4 md:px-6 shadow-sm z-20 flex-shrink-0">
+        <div class="flex items-center gap-3">
+            <div class="bg-indigo-600 text-white p-2 rounded-lg shadow-lg shadow-indigo-500/30">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M9 4.804A7.968 7.968 0 005.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 005.5 16c1.255 0 2.443-.29 3.5-.804V4.804zM14.5 4A7.969 7.969 0 0011 4.804v11.392A7.968 7.968 0 0014.5 16c1.255 0 2.443-.29 3.5-.804v-10A7.968 7.968 0 0014.5 4z" />
+                </svg>
+            </div>
+            <h1 class="font-bold text-lg md:text-xl tracking-tight">Smart <span class="text-indigo-600 dark:text-indigo-400">Reader</span></h1>
+        </div>
+
+        <div id="progress-container" class="hidden flex-1 max-w-xl mx-4 md:mx-8 items-center gap-3 transition-opacity duration-300">
+            <span class="text-xs font-medium text-slate-400">Progress</span>
+            <div class="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2 overflow-hidden cursor-pointer group" id="progress-click-area">
+                <div id="progress-bar" class="bg-indigo-600 h-2 rounded-full transition-all duration-300 relative">
+                     <div class="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                </div>
+            </div>
+            <span id="progress-text" class="text-xs font-medium text-slate-500 w-10 text-right">0%</span>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <button id="theme-toggle" class="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors" title="Toggle Dark Mode">
+                <!-- Sun -->
+                <svg id="icon-sun" class="hidden w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                <!-- Moon -->
+                <svg id="icon-moon" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 flex overflow-hidden">
+
+        <!-- Sidebar Controls -->
+        <aside class="w-full md:w-80 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex flex-col overflow-y-auto z-10 shadow-xl transition-transform md:translate-x-0 absolute md:relative h-full" id="sidebar">
+
+            <div class="p-6 border-b border-slate-100 dark:border-slate-700">
+                <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Document</h2>
+                <div id="upload-area" class="group border-2 border-dashed border-indigo-200 dark:border-indigo-900 bg-indigo-50 dark:bg-slate-900/50 rounded-xl p-6 text-center cursor-pointer hover:bg-indigo-100 dark:hover:bg-slate-800 transition-colors relative overflow-hidden">
+                    <input type="file" id="pdf-upload" class="hidden" accept="application/pdf">
+
+                    <div id="upload-placeholder" class="relative z-10">
+                        <div class="w-12 h-12 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-4-4V6a2 2 0 012-2h10a2 2 0 012 2v6a4 4 0 01-4 4H7z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                            </svg>
+                        </div>
+                        <p class="text-sm font-semibold text-indigo-900 dark:text-indigo-300">Upload PDF</p>
+                        <p class="text-xs text-indigo-500 mt-1">Drag & drop supported</p>
+                    </div>
+
+                    <div id="file-info" class="hidden relative z-10 fade-in">
+                        <div class="flex items-center gap-3 text-left">
+                            <div class="bg-green-100 text-green-600 p-2 rounded-lg">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clip-rule="evenodd" />
+                                </svg>
+                            </div>
+                            <div class="overflow-hidden">
+                                <p id="filename-display" class="text-sm font-bold text-slate-700 dark:text-slate-200 truncate w-32">file.pdf</p>
+                                <p id="page-count" class="text-xs text-slate-500">Processing...</p>
+                            </div>
+                            <button id="btn-remove-file" class="ml-auto text-slate-400 hover:text-red-500">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-6 flex-1 flex flex-col gap-6 overflow-y-auto">
+
+                <!-- Voice Settings -->
+                <div class="space-y-3">
+                    <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider">Voice Selection</label>
+                    <div class="relative">
+                        <select id="voice-select" class="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none appearance-none truncate pr-8">
+                            <option>Loading voices...</option>
+                        </select>
+                        <div class="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none text-slate-500">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sliders -->
+                <div class="space-y-4">
+                    <div>
+                        <div class="flex justify-between mb-2">
+                            <label class="text-xs font-bold text-slate-400 uppercase tracking-wider">Reading Speed</label>
+                            <span id="rate-label" class="text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded">1.0x</span>
+                        </div>
+                        <input type="range" id="rate-slider" min="0.5" max="3.0" step="0.1" value="1" class="w-full">
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between mb-2">
+                            <label class="text-xs font-bold text-slate-400 uppercase tracking-wider">Pitch</label>
+                            <span id="pitch-label" class="text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded">1.0</span>
+                        </div>
+                        <input type="range" id="pitch-slider" min="0.5" max="2" step="0.1" value="1" class="w-full">
+                    </div>
+                </div>
+
+                <!-- Playback Controls -->
+                <div class="mt-auto grid grid-cols-2 gap-3 pt-4 border-t border-slate-100 dark:border-slate-700">
+                    <button id="btn-play" disabled class="col-span-2 py-3 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-xl shadow-lg shadow-indigo-500/30 flex items-center justify-center gap-2 transition-all transform active:scale-95 font-semibold">
+                        <svg id="icon-play" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
+                        </svg>
+                        <span id="text-play">Read Aloud</span>
+                    </button>
+
+                    <button id="btn-pause" class="hidden col-span-2 py-3 px-4 bg-amber-500 hover:bg-amber-600 text-white rounded-xl shadow-lg shadow-amber-500/30 flex items-center justify-center gap-2 font-semibold transition-all transform active:scale-95">
+                        <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+                        </svg>
+                        Pause Reading
+                    </button>
+
+                    <button id="btn-stop" disabled class="col-span-2 py-2 px-4 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 hover:border-red-200 rounded-xl flex items-center justify-center gap-2 font-medium disabled:opacity-50 transition-colors">
+                        <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd" />
+                        </svg>
+                        Stop & Reset
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <section class="flex-1 bg-slate-50 dark:bg-slate-900 relative p-4 md:p-8 overflow-hidden flex flex-col w-full">
+
+            <!-- Mobile Menu Button -->
+            <button id="mobile-menu-btn" class="md:hidden absolute top-4 right-4 z-30 p-2 bg-white dark:bg-slate-800 rounded-lg shadow border border-slate-200 dark:border-slate-700">
+                <svg class="w-6 h-6 text-slate-600 dark:text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
+            </button>
+
+            <!-- Text Display Container -->
+            <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 flex-1 flex flex-col overflow-hidden relative transition-colors duration-300">
+
+                <!-- Loader -->
+                <div id="loader" class="hidden absolute inset-0 bg-white/95 dark:bg-slate-800/95 z-40 flex flex-col items-center justify-center backdrop-blur-sm">
+                    <div class="animate-spin rounded-full h-12 w-12 border-4 border-slate-200 border-t-indigo-600 mb-4"></div>
+                    <p id="loader-text" class="text-slate-600 dark:text-slate-300 font-medium animate-pulse">Processing Document...</p>
+                </div>
+
+                <!-- Empty State -->
+                <div id="empty-state" class="absolute inset-0 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 p-8 text-center">
+                    <svg class="w-20 h-20 mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+                    <h3 class="text-xl font-bold mb-2">No Document Loaded</h3>
+                    <p class="max-w-md">Upload a PDF file from the sidebar to start reading. The text will be extracted and presented here for optimal reading experience.</p>
+                </div>
+
+                <!-- Text Toolbar -->
+                <div id="text-toolbar" class="hidden px-6 py-3 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/50">
+                    <span class="text-xs font-bold text-slate-400 uppercase">Reader View</span>
+                    <div class="flex gap-2">
+                        <button class="text-xs p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded" onclick="changeFontSize(-2)">A-</button>
+                        <button class="text-xs p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded" onclick="changeFontSize(2)">A+</button>
+                    </div>
+                </div>
+
+                <!-- Content Area -->
+                <div id="content-display" class="flex-1 w-full p-6 md:p-10 overflow-y-auto outline-none font-serif text-lg leading-loose text-slate-700 dark:text-slate-300 relative scroll-smooth">
+                    <!-- Sentences will be injected here -->
+                </div>
+
+                <!-- Floating Controls for Mobile (optional, maybe later) -->
+            </div>
+        </section>
+    </main>
+
+    <script>
+        // --- State Management ---
+        const state = {
+            sentences: [], // Array of objects { text, id }
+            currentIndex: 0,
+            isPlaying: false,
+            isPaused: false,
+            voices: [],
+            fontSize: 18,
+            darkMode: false
+        };
+
+        const prefs = {
+            voiceURI: localStorage.getItem('ebook_voice') || null,
+            rate: parseFloat(localStorage.getItem('ebook_rate')) || 1.0,
+            pitch: parseFloat(localStorage.getItem('ebook_pitch')) || 1.0,
+            darkMode: localStorage.getItem('ebook_dark') === 'true'
+        };
+
+        // --- DOM Elements ---
+        const dom = {
+            body: document.body,
+            uploadInput: document.getElementById('pdf-upload'),
+            uploadArea: document.getElementById('upload-area'),
+            uploadPlaceholder: document.getElementById('upload-placeholder'),
+            fileInfo: document.getElementById('file-info'),
+            filename: document.getElementById('filename-display'),
+            pageCount: document.getElementById('page-count'),
+            btnRemove: document.getElementById('btn-remove-file'),
+
+            loader: document.getElementById('loader'),
+            loaderText: document.getElementById('loader-text'),
+            emptyState: document.getElementById('empty-state'),
+            textToolbar: document.getElementById('text-toolbar'),
+            contentDisplay: document.getElementById('content-display'),
+
+            btnPlay: document.getElementById('btn-play'),
+            textPlay: document.getElementById('text-play'),
+            btnPause: document.getElementById('btn-pause'),
+            btnStop: document.getElementById('btn-stop'),
+
+            voiceSelect: document.getElementById('voice-select'),
+            rateSlider: document.getElementById('rate-slider'),
+            rateLabel: document.getElementById('rate-label'),
+            pitchSlider: document.getElementById('pitch-slider'),
+            pitchLabel: document.getElementById('pitch-label'),
+
+            progressBar: document.getElementById('progress-bar'),
+            progressText: document.getElementById('progress-text'),
+            progressContainer: document.getElementById('progress-container'),
+            progressClickArea: document.getElementById('progress-click-area'),
+
+            themeToggle: document.getElementById('theme-toggle'),
+            iconSun: document.getElementById('icon-sun'),
+            iconMoon: document.getElementById('icon-moon')
+        };
+
+        const synth = window.speechSynthesis;
+        let currentUtterance = null;
+
+        // --- Initialization ---
+        function init() {
+            // Apply theme
+            if (prefs.darkMode) toggleTheme(true);
+
+            // Apply slider init values
+            dom.rateSlider.value = prefs.rate;
+            dom.rateLabel.textContent = prefs.rate + 'x';
+            dom.pitchSlider.value = prefs.pitch;
+            dom.pitchLabel.textContent = prefs.pitch;
+
+            populateVoices();
+            if (speechSynthesis.onvoiceschanged !== undefined) {
+                speechSynthesis.onvoiceschanged = populateVoices;
+            }
+
+            setupEventListeners();
+        }
+
+        // --- 1. Voice Handling ---
+        function populateVoices() {
+            state.voices = synth.getVoices().sort((a, b) => {
+                const aname = a.name.toUpperCase();
+                const bname = b.name.toUpperCase();
+                if (aname < bname) return -1;
+                if (aname > bname) return 1;
+                return 0;
+            });
+
+            dom.voiceSelect.innerHTML = '';
+
+            // Group voices by lang roughly (Top languages)
+            const preferredLangs = ['en', 'hi', 'es', 'fr', 'de'];
+
+            const sortedVoices = state.voices.reduce((acc, voice, index) => {
+                const langCode = voice.lang.split('-')[0];
+                const isPreferred = preferredLangs.includes(langCode);
+                const item = { index, voice, label: `${voice.name} (${voice.lang})` };
+                if (isPreferred) acc.unshift(item);
+                else acc.push(item);
+                return acc;
+            }, []);
+
+            if (sortedVoices.length === 0) {
+                dom.voiceSelect.innerHTML = '<option>No voices found</option>';
+                return;
+            }
+
+            let selectedIndex = 0;
+            sortedVoices.forEach((v, i) => {
+                const option = document.createElement('option');
+                option.textContent = v.label;
+                option.value = v.index;
+
+                // Restore saved voice
+                if (prefs.voiceURI && v.voice.voiceURI === prefs.voiceURI) {
+                    option.selected = true;
+                    selectedIndex = i;
+                } else if (!prefs.voiceURI && v.voice.default) {
+                    option.selected = true;
+                }
+
+                dom.voiceSelect.appendChild(option);
+            });
+        }
+
+        // --- 2. PDF Parsing & Rendering ---
+        async function handleFileUpload(file) {
+            if (file.type !== 'application/pdf') {
+                alert('Please upload a valid PDF file.');
+                return;
+            }
+
+            // UI Reset
+            stopAudio();
+            dom.contentDisplay.innerHTML = '';
+            state.sentences = [];
+
+            // UI Loading
+            dom.uploadPlaceholder.classList.add('hidden');
+            dom.fileInfo.classList.remove('hidden');
+            dom.filename.textContent = file.name;
+            dom.loader.classList.remove('hidden');
+            dom.loaderText.textContent = "Loading PDF Engine...";
+
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+
+                dom.pageCount.textContent = `${pdf.numPages} Pages`;
+
+                let fullText = "";
+                const totalPages = pdf.numPages;
+
+                // Process in chunks to avoid freezing UI
+                for (let i = 1; i <= totalPages; i++) {
+                    dom.loaderText.textContent = `Reading page ${i} of ${totalPages}...`;
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+
+                    // Basic layout preservation:
+                    // Check 'transform' y coordinate to guess line breaks?
+                    // For now, simpler approach: just join strings, but handle hyphens.
+
+                    const pageStrings = textContent.items.map(item => item.str);
+                    const pageCleaned = pageStrings.join(' ');
+
+                    fullText += pageCleaned + "\n\n";
+
+                    // Small delay to let UI breathe
+                    if (i % 5 === 0) await new Promise(r => setTimeout(r, 10));
+                }
+
+                dom.loaderText.textContent = "Analyzing text structure...";
+
+                // Clean Text
+                let cleaned = fullText
+                    .replace(/\s+/g, ' ')               // normalize whitespace
+                    .replace(/- ([a-z])/g, '$1')        // fix hyphenation "exam- ple" -> "example"
+                    .replace(/([.?!])([A-Z])/g, '$1 $2'); // fix missing spaces after punctuation
+
+                // Tokenize
+                const sentences = tokenizeSentences(cleaned);
+                state.sentences = sentences;
+
+                // Render
+                dom.loaderText.textContent = "Rendering document...";
+                renderText(sentences);
+
+                // Finalize UI
+                dom.loader.classList.add('hidden');
+                dom.emptyState.classList.add('hidden');
+                dom.textToolbar.classList.remove('hidden');
+                dom.progressContainer.classList.remove('hidden');
+
+                dom.btnPlay.disabled = false;
+                dom.btnStop.disabled = false;
+
+                updateProgress(0);
+
+            } catch (error) {
+                console.error(error);
+                dom.loader.classList.add('hidden');
+                alert("Error reading PDF: " + error.message);
+                resetUpload();
+            }
+        }
+
+        function resetUpload() {
+            dom.uploadInput.value = '';
+            dom.uploadPlaceholder.classList.remove('hidden');
+            dom.fileInfo.classList.add('hidden');
+            dom.emptyState.classList.remove('hidden');
+            dom.textToolbar.classList.add('hidden');
+            dom.contentDisplay.innerHTML = '';
+            dom.btnPlay.disabled = true;
+            dom.btnStop.disabled = true;
+            dom.progressContainer.classList.add('hidden');
+        }
+
+        function tokenizeSentences(text) {
+            // A more robust regex for sentence splitting
+            // Look for periods, exclamations, questions not preceded by titles like Mr. Mrs. etc.
+            // This is a simplified version.
+            const segmenter = new Intl.Segmenter('en', { granularity: 'sentence' });
+            const segments = segmenter.segment(text);
+
+            const result = [];
+            let id = 0;
+
+            for (const seg of segments) {
+                const s = seg.segment.trim();
+                if (s.length > 0) {
+                    result.push({
+                        id: id++,
+                        text: s
+                    });
+                }
+            }
+            return result;
+        }
+
+        function renderText(sentences) {
+            const fragment = document.createDocumentFragment();
+
+            sentences.forEach((s) => {
+                const span = document.createElement('span');
+                span.textContent = s.text + ' ';
+                span.className = 'sentence cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors';
+                span.dataset.id = s.id;
+                span.onclick = () => jumpToSentence(s.id);
+                fragment.appendChild(span);
+            });
+
+            dom.contentDisplay.appendChild(fragment);
+        }
+
+        // --- 3. Playback Logic ---
+        function playAudio() {
+            if (state.sentences.length === 0) return;
+
+            if (state.isPaused) {
+                resumeAudio();
+                return;
+            }
+
+            state.isPlaying = true;
+            state.isPaused = false;
+            updatePlayButtonState();
+
+            speakSentence(state.currentIndex);
+        }
+
+        function speakSentence(index) {
+            if (index >= state.sentences.length || !state.isPlaying) {
+                if (index >= state.sentences.length) {
+                   stopAudio(); // Finished
+                }
+                return;
+            }
+
+            state.currentIndex = index;
+            highlightSentence(index);
+            updateProgress(index);
+
+            const s = state.sentences[index];
+
+            synth.cancel(); // safety clear
+            const utterance = new SpeechSynthesisUtterance(s.text);
+
+            // Settings
+            const voiceIndex = dom.voiceSelect.value;
+            if (state.voices[voiceIndex]) {
+                utterance.voice = state.voices[voiceIndex].voice;
+                // Save voice pref
+                localStorage.setItem('ebook_voice', utterance.voice.voiceURI);
+            }
+
+            utterance.rate = parseFloat(dom.rateSlider.value);
+            utterance.pitch = parseFloat(dom.pitchSlider.value);
+
+            utterance.onend = () => {
+                if (state.isPlaying && !state.isPaused) {
+                    speakSentence(index + 1);
+                }
+            };
+
+            utterance.onerror = (e) => {
+                console.warn("Utterance error", e);
+                // Try to continue
+                if(state.isPlaying) speakSentence(index + 1);
+            };
+
+            currentUtterance = utterance;
+            synth.speak(utterance);
+        }
+
+        function pauseAudio() {
+            state.isPaused = true;
+            state.isPlaying = false;
+            synth.pause();
+            updatePlayButtonState();
+        }
+
+        function resumeAudio() {
+            state.isPaused = false;
+            state.isPlaying = true;
+            synth.resume();
+            updatePlayButtonState();
+        }
+
+        function stopAudio() {
+            state.isPlaying = false;
+            state.isPaused = false;
+            synth.cancel();
+
+            // Reset highlighting
+            const active = dom.contentDisplay.querySelector('.active');
+            if(active) active.classList.remove('active');
+
+            state.currentIndex = 0;
+            updatePlayButtonState();
+            updateProgress(0);
+        }
+
+        function jumpToSentence(id) {
+            stopAudio();
+            state.currentIndex = id;
+            playAudio();
+        }
+
+        function highlightSentence(index) {
+            // Remove old
+            const old = dom.contentDisplay.querySelector('.active');
+            if (old) old.classList.remove('active');
+
+            // Add new
+            const el = dom.contentDisplay.querySelector(`span[data-id='${index}']`);
+            if (el) {
+                el.classList.add('active');
+
+                // Scroll into view
+                el.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'center'
+                });
+            }
+        }
+
+        // --- 4. UI Helper Functions ---
+        function updatePlayButtonState() {
+            if (state.isPlaying) {
+                dom.btnPlay.classList.add('hidden');
+                dom.btnPause.classList.remove('hidden');
+            } else {
+                dom.btnPlay.classList.remove('hidden');
+                dom.btnPause.classList.add('hidden');
+                dom.textPlay.textContent = state.isPaused ? "Resume Reading" : "Read Aloud";
+            }
+        }
+
+        function updateProgress(index) {
+            if (state.sentences.length === 0) return;
+            const pct = Math.round(((index + 1) / state.sentences.length) * 100);
+            dom.progressBar.style.width = `${pct}%`;
+            dom.progressText.textContent = `${pct}%`;
+        }
+
+        function changeFontSize(delta) {
+            state.fontSize = Math.max(12, Math.min(32, state.fontSize + delta));
+            dom.contentDisplay.style.fontSize = `${state.fontSize}px`;
+        }
+
+        function toggleTheme(forceDark = null) {
+            const isDark = forceDark !== null ? forceDark : !dom.body.classList.contains('dark');
+
+            if (isDark) {
+                dom.body.classList.add('dark');
+                dom.iconSun.classList.remove('hidden');
+                dom.iconMoon.classList.add('hidden');
+            } else {
+                dom.body.classList.remove('dark');
+                dom.iconSun.classList.add('hidden');
+                dom.iconMoon.classList.remove('hidden');
+            }
+
+            localStorage.setItem('ebook_dark', isDark);
+            prefs.darkMode = isDark;
+        }
+
+        // --- 5. Event Listeners ---
+        function setupEventListeners() {
+            // File Upload
+            dom.uploadArea.addEventListener('click', () => dom.uploadInput.click());
+            dom.uploadInput.addEventListener('change', (e) => handleFileUpload(e.target.files[0]));
+
+            // Drag Drop
+            dom.uploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dom.uploadArea.classList.add('ring-2', 'ring-indigo-500');
+            });
+            dom.uploadArea.addEventListener('dragleave', () => {
+                dom.uploadArea.classList.remove('ring-2', 'ring-indigo-500');
+            });
+            dom.uploadArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dom.uploadArea.classList.remove('ring-2', 'ring-indigo-500');
+                if(e.dataTransfer.files.length) handleFileUpload(e.dataTransfer.files[0]);
+            });
+
+            dom.btnRemove.addEventListener('click', (e) => {
+                e.stopPropagation();
+                resetUpload();
+            });
+
+            // Media Controls
+            dom.btnPlay.addEventListener('click', playAudio);
+            dom.btnPause.addEventListener('click', pauseAudio);
+            dom.btnStop.addEventListener('click', stopAudio);
+
+            // Settings
+            dom.rateSlider.addEventListener('input', (e) => {
+                const val = e.target.value;
+                dom.rateLabel.textContent = val + 'x';
+                localStorage.setItem('ebook_rate', val);
+                // Restart current sentence to apply speed change immediately?
+                // For now, it applies on next sentence or if user pauses/resumes
+            });
+
+            dom.pitchSlider.addEventListener('input', (e) => {
+                const val = e.target.value;
+                dom.pitchLabel.textContent = val;
+                localStorage.setItem('ebook_pitch', val);
+            });
+
+            // Progress Click
+            dom.progressClickArea.addEventListener('click', (e) => {
+                if (state.sentences.length === 0) return;
+                const rect = dom.progressClickArea.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const pct = x / rect.width;
+                const targetIndex = Math.floor(pct * state.sentences.length);
+                jumpToSentence(targetIndex);
+            });
+
+            // Theme
+            dom.themeToggle.addEventListener('click', () => toggleTheme());
+        }
+
+        // Start
+        init();
+    </script>
+</body>
+</html>
